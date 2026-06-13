@@ -12,7 +12,6 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 require('dotenv').config();
 
-// استيراد الـ routes
 const authRoutes = require('./src/routes/auth.routes');
 const productRoutes = require('./src/routes/product.routes');
 const categoryRoutes = require('./src/routes/category.routes');
@@ -26,16 +25,15 @@ const uploadRoutes = require('./src/routes/upload.routes');
 
 const app = express();
 
-// ============================
-// Middleware للأمان
-// ============================
+// ✅ مهم لـ Railway و Vercel
+app.set('trust proxy', 1);
 
-// Helmet لحماية HTTP headers
+// Helmet
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
 
-// CORS - السماح للفرونت إند بالتواصل مع الباك إند
+// CORS
 app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:5173',
   credentials: true,
@@ -43,39 +41,29 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Rate Limiting - الحماية من هجمات الـ brute force
+// Rate Limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 دقيقة
-  max: 100, // 100 طلب كحد أقصى لكل IP
-  message: { success: false, message: 'تجاوزت الحد المسموح من الطلبات، حاول مرة أخرى بعد 15 دقيقة' }
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { success: false, message: 'تجاوزت الحد المسموح من الطلبات' }
 });
 app.use('/api/', limiter);
 
-// Rate limiting أشد لـ Auth routes
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
-  message: { success: false, message: 'محاولات تسجيل دخول كثيرة، حاول مرة أخرى بعد 15 دقيقة' }
+  message: { success: false, message: 'محاولات تسجيل دخول كثيرة' }
 });
 
-// ============================
-// Body Parsing Middleware
-// ============================
-
-// Stripe Webhook يحتاج raw body قبل JSON parsing
+// Body Parsing
 app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
-
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// ============================
-// Static Files (الصور المرفوعة)
-// ============================
+// Static Files
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// ============================
 // API Routes
-// ============================
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
@@ -87,9 +75,7 @@ app.use('/api/wishlist', wishlistRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/upload', uploadRoutes);
 
-// ============================
-// Health Check Endpoint
-// ============================
+// Health Check
 app.get('/api/health', (req, res) => {
   res.json({
     success: true,
@@ -99,30 +85,17 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// ============================
-// 404 Handler
-// ============================
+// 404
 app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: 'المسار المطلوب غير موجود'
-  });
+  res.status(404).json({ success: false, message: 'المسار المطلوب غير موجود' });
 });
 
-// ============================
-// Global Error Handler
-// ============================
+// Error Handler
 app.use((err, req, res, next) => {
   console.error('Global Error:', err);
-
-  // Multer errors (رفع الملفات)
   if (err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(400).json({
-      success: false,
-      message: 'حجم الملف كبير جداً، الحد الأقصى 5MB'
-    });
+    return res.status(400).json({ success: false, message: 'حجم الملف كبير جداً، الحد الأقصى 5MB' });
   }
-
   res.status(err.status || 500).json({
     success: false,
     message: err.message || 'حدث خطأ في الخادم',
@@ -130,9 +103,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// ============================
 // Start Server
-// ============================
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, () => {
   console.log(`
