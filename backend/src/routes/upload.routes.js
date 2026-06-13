@@ -1,7 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const { UploadcareSimpleAuthSchema, uploadFile } = require('@uploadcare/rest-client');
+const https = require('https');
+const FormData = require('form-data');
 const { authenticate, isAdmin } = require('../middleware/auth.middleware');
 const db = require('../config/database');
 
@@ -16,10 +17,42 @@ const upload = multer({
   }
 });
 
-const getUploadcareClient = () => {
-  return new UploadcareSimpleAuthSchema({
-    publicKey: process.env.UPLOADCARE_PUBLIC_KEY || '530476f6781c51879c13',
-    secretKey: process.env.UPLOADCARE_SECRET_KEY || 'cf62ffc46869cb6d8dce',
+const UPLOADCARE_PUBLIC_KEY = process.env.UPLOADCARE_PUBLIC_KEY || '530476f6781c51879c13';
+
+// رفع صورة لـ Uploadcare
+const uploadToUploadcare = (fileBuffer, fileName, mimeType) => {
+  return new Promise((resolve, reject) => {
+    const form = new FormData();
+    form.append('UPLOADCARE_PUB_KEY', UPLOADCARE_PUBLIC_KEY);
+    form.append('UPLOADCARE_STORE', '1');
+    form.append('file', fileBuffer, { filename: fileName, contentType: mimeType });
+
+    const options = {
+      method: 'POST',
+      host: 'upload.uploadcare.com',
+      path: '/base/',
+      headers: form.getHeaders(),
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.file) {
+            resolve(`https://ucarecdn.com/${parsed.file}/`);
+          } else {
+            reject(new Error('Upload failed: ' + data));
+          }
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+
+    req.on('error', reject);
+    form.pipe(req);
   });
 };
 
@@ -27,17 +60,11 @@ const getUploadcareClient = () => {
 router.post('/product-image', authenticate, isAdmin, upload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, message: 'لم يتم رفع أي صورة' });
   try {
-    const authSchema = getUploadcareClient();
-    const result = await uploadFile(
-      req.file.buffer,
-      { publicKey: process.env.UPLOADCARE_PUBLIC_KEY || '530476f6781c51879c13' },
-      { fileName: req.file.originalname, contentType: req.file.mimetype }
-    );
-    const imageUrl = `https://ucarecdn.com/${result.uuid}/`;
-    res.json({ success: true, message: 'تم رفع الصورة بنجاح', data: { url: imageUrl } });
+    const url = await uploadToUploadcare(req.file.buffer, req.file.originalname, req.file.mimetype);
+    res.json({ success: true, message: 'تم رفع الصورة بنجاح', data: { url } });
   } catch (err) {
-    console.error('Upload error:', err);
-    res.status(500).json({ success: false, message: 'فشل رفع الصورة' });
+    console.error('Upload error:', err.message);
+    res.status(500).json({ success: false, message: 'فشل رفع الصورة: ' + err.message });
   }
 });
 
@@ -47,12 +74,8 @@ router.post('/product-images', authenticate, isAdmin, upload.array('images', 10)
   try {
     const images = [];
     for (const file of req.files) {
-      const result = await uploadFile(
-        file.buffer,
-        { publicKey: process.env.UPLOADCARE_PUBLIC_KEY || '530476f6781c51879c13' },
-        { fileName: file.originalname, contentType: file.mimetype }
-      );
-      images.push({ url: `https://ucarecdn.com/${result.uuid}/` });
+      const url = await uploadToUploadcare(file.buffer, file.originalname, file.mimetype);
+      images.push({ url });
     }
     res.json({ success: true, message: `تم رفع ${images.length} صورة`, data: { images } });
   } catch (err) {
@@ -64,12 +87,7 @@ router.post('/product-images', authenticate, isAdmin, upload.array('images', 10)
 router.post('/avatar', authenticate, upload.single('avatar'), async (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, message: 'لم يتم رفع أي صورة' });
   try {
-    const result = await uploadFile(
-      req.file.buffer,
-      { publicKey: process.env.UPLOADCARE_PUBLIC_KEY || '530476f6781c51879c13' },
-      { fileName: req.file.originalname, contentType: req.file.mimetype }
-    );
-    const avatarUrl = `https://ucarecdn.com/${result.uuid}/`;
+    const avatarUrl = await uploadToUploadcare(req.file.buffer, req.file.originalname, req.file.mimetype);
     await db.query('UPDATE users SET avatar = ? WHERE id = ?', [avatarUrl, req.user.id]);
     res.json({ success: true, message: 'تم تحديث الصورة الشخصية', data: { url: avatarUrl } });
   } catch (err) {
