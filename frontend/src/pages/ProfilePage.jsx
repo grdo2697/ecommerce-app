@@ -10,6 +10,7 @@ const ProfilePage = () => {
   const [profile, setProfile] = useState({ name: user?.name || '', phone: user?.phone || '' })
   const [passwords, setPasswords] = useState({ current_password: '', new_password: '' })
   const [loading, setLoading] = useState(false)
+  const [avatarKey, setAvatarKey] = useState(Date.now())
 
   const handleProfileUpdate = async e => {
     e.preventDefault()
@@ -40,6 +41,7 @@ const ProfilePage = () => {
     try {
       const res = await uploadAPI.avatar(fd)
       updateUser({ avatar: res.data.data.url })
+      setAvatarKey(Date.now())
       toast.success('تم تحديث الصورة الشخصية')
     } catch { toast.error('فشل رفع الصورة') }
   }
@@ -52,8 +54,16 @@ const ProfilePage = () => {
       <div className="card p-6 mb-6 flex items-center gap-5">
         <div className="relative">
           {user?.avatar
-            ? <img src={user.avatar} alt={user.name} className="w-20 h-20 rounded-full object-cover" />
-            : <div className="w-20 h-20 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-3xl font-bold">{user?.name?.charAt(0)}</div>
+            ? <img
+                key={avatarKey}
+                src={`${user.avatar}?t=${avatarKey}`}
+                alt={user.name}
+                className="w-20 h-20 rounded-full object-cover"
+                onError={e => { e.target.style.display = 'none' }}
+              />
+            : <div className="w-20 h-20 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center text-3xl font-bold">
+                {user?.name?.charAt(0)}
+              </div>
           }
           <label className="absolute bottom-0 left-0 w-7 h-7 bg-primary-600 text-white rounded-full flex items-center justify-center cursor-pointer hover:bg-primary-700 transition-colors">
             <Camera size={14} />
@@ -95,7 +105,9 @@ const ProfilePage = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">رقم الهاتف</label>
               <input value={profile.phone} onChange={e => setProfile({...profile, phone: e.target.value})} className="input-field ltr" />
             </div>
-            <button type="submit" disabled={loading} className="btn-primary">{loading ? 'جاري الحفظ...' : 'حفظ التغييرات'}</button>
+            <button type="submit" disabled={loading} className="btn-primary">
+              {loading ? 'جاري الحفظ...' : 'حفظ التغييرات'}
+            </button>
           </form>
         )}
 
@@ -109,7 +121,9 @@ const ProfilePage = () => {
               <label className="block text-sm font-medium text-gray-700 mb-1">كلمة المرور الجديدة</label>
               <input type="password" value={passwords.new_password} onChange={e => setPasswords({...passwords, new_password: e.target.value})} className="input-field ltr" required minLength={8} />
             </div>
-            <button type="submit" disabled={loading} className="btn-primary">{loading ? 'جاري التغيير...' : 'تغيير كلمة المرور'}</button>
+            <button type="submit" disabled={loading} className="btn-primary">
+              {loading ? 'جاري التغيير...' : 'تغيير كلمة المرور'}
+            </button>
           </form>
         )}
       </div>
